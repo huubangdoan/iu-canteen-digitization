@@ -2,29 +2,32 @@ package iu.canteen.ui;
 
 import iu.canteen.logic.Store;
 import iu.canteen.logic.Store.Dish;
+import iu.canteen.model.MenuItemSize;
+import javafx.animation.PauseTransition;
+import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.SimpleIntegerProperty;
 import javafx.collections.ListChangeListener;
 import javafx.collections.WeakListChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.TextField;
-import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.util.Duration;
+import javafx.util.StringConverter;
 
-import java.util.function.Consumer;
-
-/** Builds and refreshes the student-facing menu. */
+/**
+ * Giao diện thực đơn sinh viên hỗ trợ chọn Size (S/M/L) và số lượng trực tiếp.
+ */
 final class StudentMenuView {
+    @FunctionalInterface
+    public interface AddToCartHandler {
+        void add(Dish dish, MenuItemSize size, int quantity);
+    }
+
     private ListChangeListener<Dish> menuListener;
 
-    Node build(Consumer<Dish> onAddToCart) {
+    Node build(AddToCartHandler onAddToCart) {
         ComboBox<String> category = new ComboBox<>();
         category.getItems().add("Tất cả");
         category.getItems().addAll(Store.CATEGORIES);
@@ -71,36 +74,136 @@ final class StudentMenuView {
     }
 
     private String emoji(String category) {
-        switch (category) {
-            case "Cơm":      return "🍚";
-            case "Món nước": return "🍜";
-            case "Ăn nhẹ":   return "🥖";
-            case "Đồ uống":  return "🧋";
-            default:         return "🍴";
-        }
+        return switch (category) {
+            case "Cơm" -> "🍚";
+            case "Món nước" -> "🍜";
+            case "Ăn nhẹ" -> "🥖";
+            case "Đồ uống" -> "🧋";
+            default -> "🍴";
+        };
     }
 
-    private Node dishCard(Dish dish, Consumer<Dish> onAddToCart) {
+    private Node dishCard(Dish dish, AddToCartHandler onAddToCart) {
         StackPane thumb = new StackPane(Ui.label(emoji(dish.category.get()), "menu-emoji"));
         thumb.getStyleClass().add("menu-thumb");
 
         Label name = Ui.label(dish.name.get(), "dish-name");
         name.setWrapText(true);
         Label tag = Ui.label(dish.category.get(), "tag");
-        Label price = Ui.label(Ui.money(dish.price.get()), "price");
         Label stock = dish.orderable()
                 ? Ui.label("Còn " + dish.remaining.get() + " phần", "stock-ok")
-                : Ui.label(dish.available.get() ? "Hết món" : "Tạm ngưng bán", "soldout");
+                : Ui.label(dish.available.get() ? "Hết món" : "Tạm ngưng", "soldout");
 
+        // Bộ chọn Size (S / M / L)
+        ComboBox<MenuItemSize> sizeCombo = new ComboBox<>();
+        if (!dish.sizes.isEmpty()) {
+            sizeCombo.getItems().addAll(dish.sizes);
+            MenuItemSize defaultSize = dish.getSize("M");
+            sizeCombo.getSelectionModel().select(defaultSize != null ? defaultSize : dish.sizes.get(0));
+        } else {
+            MenuItemSize fallback = new MenuItemSize(0, dish.id, "M", dish.price.get(), 1.0, 0);
+            sizeCombo.getItems().add(fallback);
+            sizeCombo.getSelectionModel().selectFirst();
+        }
+        sizeCombo.setMaxWidth(Double.MAX_VALUE);
+        sizeCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(MenuItemSize s) {
+                if (s == null) return "";
+                return "Size " + s.getSizeLabel() + " • " + Ui.money(s.getPrice());
+            }
+
+            @Override
+            public MenuItemSize fromString(String string) {
+                return null;
+            }
+        });
+
+        Label price = Ui.label("", "price");
+        Label portionHint = Ui.label("", "portion-hint");
+        portionHint.setWrapText(true);
+
+        Runnable updateSizeView = () -> {
+            MenuItemSize selected = sizeCombo.getValue();
+            if (selected != null) {
+                price.setText(Ui.money(selected.getPrice()));
+                switch (selected.getSizeLabel().toUpperCase()) {
+                    case "S" -> portionHint.setText("🌱 Size S: -15% cơm/thịt (chống lãng phí)");
+                    case "M" -> portionHint.setText("⭐ Size M: Tiêu chuẩn vừa vặn");
+                    case "L" -> portionHint.setText("💪 Size L: No nê +30% khẩu phần");
+                    default -> portionHint.setText("Hệ số định lượng: " + selected.getPortionMultiplier() + "x");
+                }
+            } else {
+                price.setText(Ui.money(dish.price.get()));
+                portionHint.setText("");
+            }
+        };
+        sizeCombo.setOnAction(e -> updateSizeView.run());
+        updateSizeView.run();
+
+        // Bộ chọn Số lượng: [-] [qty] [+]
+        IntegerProperty selectedQty = new SimpleIntegerProperty(1);
+        Button minusBtn = Ui.button("−", "btn-small");
+        Label qtyVal = Ui.label("1", "qty-label");
+        Button plusBtn = Ui.button("+", "btn-small");
+
+        minusBtn.setOnAction(e -> {
+            if (selectedQty.get() > 1) {
+                selectedQty.set(selectedQty.get() - 1);
+                qtyVal.setText(String.valueOf(selectedQty.get()));
+            }
+        });
+
+        plusBtn.setOnAction(e -> {
+            if (selectedQty.get() < dish.remaining.get()) {
+                selectedQty.set(selectedQty.get() + 1);
+                qtyVal.setText(String.valueOf(selectedQty.get()));
+            } else {
+                Ui.warn("Đạt giới hạn", "Món này chỉ còn " + dish.remaining.get() + " phần.");
+            }
+        });
+
+        HBox stepper = new HBox(6, minusBtn, qtyVal, plusBtn);
+        stepper.setAlignment(Pos.CENTER);
+
+        // Nút thêm vào giỏ
         Button add = Ui.button("＋ Thêm vào giỏ", "btn-primary");
         add.setMaxWidth(Double.MAX_VALUE);
         add.setDisable(!dish.orderable());
-        add.setOnAction(event -> onAddToCart.accept(dish));
+        add.setOnAction(event -> {
+            MenuItemSize chosenSize = sizeCombo.getValue();
+            int q = selectedQty.get();
+            onAddToCart.add(dish, chosenSize, q);
 
-        VBox card = Ui.card(thumb, name, new HBox(8, tag, Ui.spacer(), stock), price, add);
+            // Visual feedback khi bấm thêm
+            String originalText = add.getText();
+            add.setText("✓ Đã thêm " + q + " phần!");
+            add.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white;");
+            PauseTransition pause = new PauseTransition(Duration.millis(1000));
+            pause.setOnFinished(ev -> {
+                add.setText(originalText);
+                add.setStyle("");
+            });
+            pause.play();
+        });
+
+        VBox card = Ui.card(
+                thumb,
+                name,
+                new HBox(8, tag, Ui.spacer(), stock),
+                sizeCombo,
+                portionHint,
+                new HBox(8, price, Ui.spacer(), stepper),
+                add
+        );
         card.getStyleClass().add("menu-card");
-        card.setPrefWidth(220);
-        if (!dish.orderable()) card.setOpacity(0.45);
+        card.setPrefWidth(240);
+        if (!dish.orderable()) {
+            card.setOpacity(0.5);
+            sizeCombo.setDisable(true);
+            minusBtn.setDisable(true);
+            plusBtn.setDisable(true);
+        }
         return card;
     }
 }

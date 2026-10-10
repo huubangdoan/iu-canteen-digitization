@@ -2,8 +2,15 @@ package iu.canteen.ui;
 
 import iu.canteen.App;
 import iu.canteen.logic.ForecastMethod;
+import iu.canteen.logic.ForecastService;
+import iu.canteen.logic.ForecastService.ForecastResult;
 import iu.canteen.logic.Store;
 import iu.canteen.logic.Store.*;
+import iu.canteen.model.CalendarEvent;
+import iu.canteen.model.ForecastEntry;
+import iu.canteen.model.WeatherData;
+import iu.canteen.service.HolidayService;
+import iu.canteen.service.WeatherService;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.ListChangeListener;
@@ -21,6 +28,7 @@ import javafx.scene.layout.*;
 import javafx.util.converter.DoubleStringConverter;
 import javafx.util.converter.IntegerStringConverter;
 
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -35,9 +43,20 @@ public class VendorView extends AbstractAuthenticatedView {
 
     private ListChangeListener<Order> orderListener;
 
+    private javafx.animation.Timeline poll;
+
+    private final VendorEndOfDayView endOfDayView = new VendorEndOfDayView();
+    private final VendorWasteDashboard wasteDashboard = new VendorWasteDashboard();
+    private final iu.canteen.service.ReportService reportService = new iu.canteen.service.ReportService();
+
     @Override
     protected String roleLabel() {
         return Store.currentRole == Role.ADMIN ? "Quản trị" : "Quản lý quán";
+    }
+
+    @Override
+    protected void onLogout() {
+        if (poll != null) poll.stop();
     }
 
     @Override
@@ -46,10 +65,22 @@ public class VendorView extends AbstractAuthenticatedView {
                 new Tab("🔥  Đơn đến", buildBoard()),
                 new Tab("🍽  Menu", buildMenuManager()),
                 new Tab("📖  Công thức", buildRecipes()),
-                new Tab("📊  Thống kê", buildStats()),
                 new Tab("📦  Kho", buildInventory()),
-                new Tab("🔮  Dự đoán", buildForecast()));
+                new Tab("🔮  Dự đoán", buildForecast()),
+                new Tab("♻️  Kiểm kê & Flash Sale", endOfDayView.build()),
+                new Tab("📉  Giảm lãng phí", wasteDashboard.build()),
+                new Tab("📊  Thống kê", buildStats()));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        // Tự động đồng bộ đơn từ DB mỗi 3 giây cho bảng bếp
+        poll = new javafx.animation.Timeline(new javafx.animation.KeyFrame(javafx.util.Duration.seconds(3), e -> {
+            try {
+                new iu.canteen.service.OrderService().refreshAllOrders();
+            } catch (Exception ignored) {}
+        }));
+        poll.setCycleCount(javafx.animation.Timeline.INDEFINITE);
+        poll.play();
+
         return tabs;
     }
 
@@ -124,7 +155,8 @@ public class VendorView extends AbstractAuthenticatedView {
                 Ui.label(o.createdAt.format(HM), "muted"));
         box.getChildren().addAll(head, Ui.label(o.customer, "muted"));
         for (Order.Line l : o.lines) {
-            box.getChildren().add(Ui.label(l.qty() + " × " + l.name(), "line-item"));
+            String sizeInfo = (l.size() != null && !l.size().isEmpty()) ? " [Size " + l.size() + "]" : "";
+            box.getChildren().add(Ui.label(l.qty() + " × " + l.name() + sizeInfo, "line-item"));
             if (l.note() != null && !l.note().isBlank()) {
                 box.getChildren().add(Ui.label("   ↳ " + l.note(), "note-text"));
             }
@@ -142,13 +174,15 @@ public class VendorView extends AbstractAuthenticatedView {
         HBox actions = new HBox(8);
         if (next != null) {
             Button b = Ui.button(actionText(s), "btn-primary");
-            b.setOnAction(e -> o.status.set(next));   // TODO: OrderService.updateStatus(o.id, next)
+            b.setOnAction(e -> new iu.canteen.service.OrderService().updateStatus(o.id, next));
             actions.getChildren().add(b);
         }
         if (s == Status.PENDING) {
             Button rej = Ui.button("Từ chối", "btn-danger");
             rej.setOnAction(e -> {
-                if (Ui.confirm("Từ chối đơn #" + o.id + "?", "Khách sẽ thấy đơn bị hủy.")) Store.cancelOrder(o);
+                if (Ui.confirm("Từ chối đơn #" + o.id + "?", "Khách sẽ thấy đơn bị hủy.")) {
+                    new iu.canteen.service.OrderService().updateStatus(o.id, Status.CANCELLED);
+                }
             });
             actions.getChildren().add(rej);
         }
@@ -215,7 +249,13 @@ public class VendorView extends AbstractAuthenticatedView {
                 Ui.warn("Thiếu thông tin", "Nhập tên món, giá và số phần hợp lệ.");
                 return;
             }
-            // TODO: MenuDao.insert(...)
+            try {
+                iu.canteen.dao.MenuDao menuDao = new iu.canteen.dao.MenuDao();
+                iu.canteen.model.MenuItem created = menuDao.createMenuItem(name.getText().trim(), cat.getValue(), true);
+                if (created != null) {
+                    menuDao.addMenuItemSize(created.getId(), "M", p.intValue(), 1.0, 0);
+                }
+            } catch (Exception ignored) {}
             Store.addDish(name.getText().trim(), p.intValue(), cat.getValue(), q.intValue());
             name.clear();
             price.clear();
@@ -305,7 +345,9 @@ public class VendorView extends AbstractAuthenticatedView {
                 Ui.warn("Thiếu thông tin", "Chọn món, nguyên liệu và nhập định lượng hợp lệ.");
                 return;
             }
-            // TODO: RecipeDao.upsert(d.id, ing.id, q)
+            try {
+                new iu.canteen.dao.RecipeDao().saveRecipe(d.id, ing.getValue().id, q);
+            } catch (Exception ignored) {}
             Store.recipeFor(d).add(new RecipeLine(ing.getValue(), q));
             qty.clear();
         });
@@ -361,35 +403,39 @@ public class VendorView extends AbstractAuthenticatedView {
         best.setLegendVisible(false);
 
         Runnable load = () -> {
-            // TODO: thay bằng truy vấn thật từ orders/order_items theo khoảng ngày
-            int mul = switch (range.getSelectionModel().getSelectedIndex()) { case 1 -> 7; case 2 -> 30; default -> 1; };
-            int[] perHour = {3, 6, 5, 14, 42, 51, 18, 9, 12, 26, 11};   // 07h..17h
+            LocalDate today = LocalDate.now();
+            LocalDate from = switch (range.getSelectionModel().getSelectedIndex()) {
+                case 1 -> today.minusDays(6);
+                case 2 -> today.minusDays(29);
+                default -> today;
+            };
+
+            var summary = reportService.getSalesSummary(from, today);
+            var hourlyDist = reportService.getHourlyDistribution(from, today);
+            var topSelling = reportService.getTopSelling(from, today, 8);
+
             XYChart.Series<String, Number> s1 = new XYChart.Series<>();
-            int total = 0, peakIdx = 0;
-            for (int i = 0; i < perHour.length; i++) {
-                int v = perHour[i] * mul;
-                total += v;
-                if (perHour[i] > perHour[peakIdx]) peakIdx = i;
-                s1.getData().add(new XYChart.Data<>(String.format("%02dh", 7 + i), v));
-            }
+            hourlyDist.forEach((hr, count) -> {
+                s1.getData().add(new XYChart.Data<>(String.format("%02dh", hr), count));
+            });
             hourly.getData().setAll(List.of(s1));
 
             XYChart.Series<String, Number> s2 = new XYChart.Series<>();
-            String bestName = "-";
-            int bestQty = -1;
-            List<Dish> sorted = new ArrayList<>(Store.menu);
-            sorted.sort((a, b) -> b.avgDaily - a.avgDaily);
-            for (Dish d : sorted) {
-                int q = d.avgDaily * mul;
-                s2.getData().add(new XYChart.Data<>(d.name.get(), q));
-                if (q > bestQty) { bestQty = q; bestName = d.name.get(); }
+            if (topSelling.isEmpty()) {
+                for (Dish d : Store.menu) {
+                    s2.getData().add(new XYChart.Data<>(d.name.get(), d.avgDaily));
+                }
+            } else {
+                for (var item : topSelling) {
+                    s2.getData().add(new XYChart.Data<>(item.menuItemName() + " (" + item.sizeLabel() + ")", item.quantitySold()));
+                }
             }
             best.getData().setAll(List.of(s2));
 
-            kOrders.setText(String.valueOf(total));
-            kRevenue.setText(Ui.money(total * 68000L));
-            kBest.setText(bestName);
-            kPeak.setText(String.format("%02d:00 – %02d:00", 7 + peakIdx, 8 + peakIdx));
+            kOrders.setText(String.valueOf(summary.totalOrders()));
+            kRevenue.setText(Ui.money(summary.totalRevenue()));
+            kBest.setText(summary.bestSellingDish());
+            kPeak.setText(summary.totalOrders() > 0 ? String.format("%02d:00 – %02d:00", summary.peakHour(), summary.peakHour() + 1) : "-");
         };
         range.setOnAction(e -> load.run());
         load.run();
@@ -427,6 +473,9 @@ public class VendorView extends AbstractAuthenticatedView {
     // TAB: DỰ ĐOÁN NGUYÊN LIỆU
     // =========================================================
     private Node buildForecast() {
+        WeatherService weatherService = new WeatherService();
+        HolidayService holidayService = new HolidayService();
+
         ComboBox<Integer> days = new ComboBox<>();
         days.getItems().addAll(3, 4, 5, 6, 7);
         days.getSelectionModel().select(Integer.valueOf(5));
@@ -437,10 +486,10 @@ public class VendorView extends AbstractAuthenticatedView {
 
         ComboBox<ForecastMethod> method = new ComboBox<>();
         method.getItems().addAll(ForecastMethod.values());
-        method.getSelectionModel().selectFirst();
+        method.getSelectionModel().select(ForecastMethod.SMART_AI_ENSEMBLE);
 
         TableView<ForecastRow> table = new TableView<>();
-        table.setPlaceholder(new Label("Bấm “Chạy dự đoán” để xem gợi ý mua nguyên liệu."));
+        table.setPlaceholder(new Label("Bấm “Chạy dự đoán” để xem gợi ý mua nguyên liệu thông minh."));
 
         TableColumn<ForecastRow, String> n = new TableColumn<>("Nguyên liệu");
         n.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().name()));
@@ -479,34 +528,73 @@ public class VendorView extends AbstractAuthenticatedView {
         Label suggestion = Ui.label("", "muted");
         suggestion.setWrapText(true);
 
+        // Header thông tin bối cảnh thời tiết & sự kiện
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
+        WeatherData w = weatherService.getWeatherByDate(tomorrow);
+        double wFactor = weatherService.getDemandFactor(w);
+        double hFactor = holidayService.getDemandFactor(tomorrow);
+        double histAccuracy = ForecastService.getAccuracy(LocalDate.now().minusDays(30), LocalDate.now());
+
+        Label weatherInfo = Ui.label(
+                String.format("🌤 Thời tiết: %.1f°C, %s (x%.2f)", w.getTemperature(), w.getWeatherCondition(), wFactor),
+                "badge"
+        );
+        weatherInfo.getStyleClass().add("badge-buy");
+
+        String eventDesc = holidayService.getEventByDate(tomorrow)
+                .map(CalendarEvent::getDescription)
+                .orElse("Ngày học bình thường");
+        Label eventInfo = Ui.label(
+                String.format("📅 Sự kiện: %s (x%.2f)", eventDesc, hFactor),
+                "badge"
+        );
+        eventInfo.getStyleClass().add("badge-enough");
+
+        Label accInfo = Ui.label(
+                String.format("🎯 Độ chính xác mô hình: %.1f%%", histAccuracy),
+                "badge"
+        );
+        accInfo.getStyleClass().add("badge-urgent");
+
+        HBox contextBox = new HBox(12, weatherInfo, eventInfo, accInfo);
+        contextBox.setAlignment(Pos.CENTER_LEFT);
+
         Button run = Ui.button("🔮 Chạy dự đoán", "btn-primary");
         Button save = Ui.button("💾 Lưu dự đoán", "btn-accent");
         save.setDisable(true);
 
+        List<ForecastEntry> currentEntries = new ArrayList<>();
+
         run.setOnAction(e -> {
-            // TODO: Replace the mock forecast with persisted sales data.
-            List<ForecastRow> rows = Store.forecast(days.getValue(), method.getValue());
-            table.getItems().setAll(rows);
+            ForecastResult result = ForecastService.forecastDetailed(days.getValue(), method.getValue(), tomorrow);
+            table.getItems().setAll(result.rows());
+            currentEntries.clear();
+            currentEntries.addAll(result.dbEntries());
 
             XYChart.Series<String, Number> have = new XYChart.Series<>();
             have.setName("Tồn hiện tại");
             XYChart.Series<String, Number> want = new XYChart.Series<>();
             want.setName("Dự kiến cần");
             StringJoiner buyList = new StringJoiner(", ");
-            for (ForecastRow r : rows) {
+            for (ForecastRow r : result.rows()) {
                 have.getData().add(new XYChart.Data<>(r.name(), r.stock()));
                 want.getData().add(new XYChart.Data<>(r.name(), r.need()));
                 if (r.buy() > 0) buyList.add(r.name() + " " + Ui.num(r.buy()) + " " + r.unit());
             }
             chart.getData().setAll(List.of(have, want));
             suggestion.setText(buyList.length() == 0
-                    ? "✅ Tồn kho đủ cho " + days.getValue() + " ngày tới."
-                    : "🛒 Nên mua: " + buyList);
+                    ? String.format("✅ Tồn kho đủ cho %d ngày tới (Hệ số tổng: %.2fx, Phương pháp: %s).",
+                        days.getValue(), result.overallMultiplier(), method.getValue().getLabel())
+                    : String.format("🛒 Gợi ý nhập kho (Hệ số tổng: %.2fx): %s", result.overallMultiplier(), buyList));
             save.setDisable(false);
         });
+
         save.setOnAction(e -> {
-            // TODO: ForecastDao.insertAll(...) – lưu vào bảng forecasts để đối chiếu với thực tế
-            Ui.info("Đã lưu dự đoán", "Kết quả được lưu để so sánh với số liệu thực tế sau này.");
+            if (!currentEntries.isEmpty()) {
+                ForecastService.saveForecastToDatabase(currentEntries);
+                Ui.info("Đã lưu dự đoán", "Đã lưu " + currentEntries.size() + " mục dự báo vào Database để theo dõi độ chính xác.");
+                save.setDisable(true);
+            }
         });
 
         HBox controls = new HBox(10, Ui.label("Dự đoán nguyên liệu", "h1"), Ui.spacer(),
@@ -514,7 +602,7 @@ public class VendorView extends AbstractAuthenticatedView {
                 Ui.label("Phương pháp:", "muted"), method, run, save);
         controls.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(12, controls, table, Ui.card(suggestion), chart);
+        VBox box = new VBox(12, controls, contextBox, table, Ui.card(suggestion), chart);
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(16));
         return box;

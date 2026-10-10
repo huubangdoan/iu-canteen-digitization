@@ -141,13 +141,17 @@ final class VendorInventoryView {
                 Ui.warn("Thiếu thông tin", "Chọn nguyên liệu, nhập số lượng, chi phí và ngày hợp lệ.");
                 return;
             }
-            // TODO: InventoryDao.insertBatch(...) + PurchaseDao.insert(...)
             Ingredient selected = ingredient.getValue();
-            Store.batches.add(0, new Batch(selected, amount, totalCost, received.getValue(), expiry.getValue()));
-            selected.stock.set(selected.stock.get() + amount);
-            quantity.clear();
-            cost.clear();
-            Ui.info("Đã nhập kho", "+" + Ui.num(amount) + " " + selected.unit + " " + selected.name);
+            double costPerUnit = totalCost / amount;
+            try {
+                new iu.canteen.service.InventoryService().receiveBatch(
+                        selected.id, amount, costPerUnit, received.getValue(), expiry.getValue(), null);
+                quantity.clear();
+                cost.clear();
+                Ui.info("Đã nhập kho thành công 🎉", "+" + Ui.num(amount) + " " + selected.unit + " " + selected.name);
+            } catch (Exception ex) {
+                Ui.warn("Lỗi nhập kho", ex.getMessage());
+            }
         });
 
         VBox form = Ui.card(Ui.label("Phiếu nhập kho", "h2"),
@@ -202,11 +206,15 @@ final class VendorInventoryView {
                 Ui.warn("Thiếu thông tin", "Chọn nguyên liệu, nhập số lượng và ngày hợp lệ.");
                 return;
             }
-            // TODO: WasteDao.insert(...)
             Ingredient selected = ingredient.getValue();
-            Store.wastes.add(0, new WasteLog(selected, lost, reason.getValue(), date.getValue()));
-            selected.stock.set(Math.max(0, selected.stock.get() - lost));
-            quantity.clear();
+            try {
+                new iu.canteen.service.InventoryService().logWaste(
+                        selected.id, lost, reason.getValue(), date.getValue(), Store.currentUser);
+                quantity.clear();
+                Ui.info("Đã ghi nhận hao hụt", "-" + Ui.num(lost) + " " + selected.unit + " " + selected.name);
+            } catch (Exception ex) {
+                Ui.warn("Lỗi ghi hao hụt", ex.getMessage());
+            }
         });
 
         VBox form = Ui.card(Ui.label("Ghi nhận hao hụt", "h2"),

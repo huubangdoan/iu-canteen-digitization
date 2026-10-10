@@ -50,6 +50,8 @@ public final class Store {
         public final IntegerProperty remaining = new SimpleIntegerProperty();
         /** Lượng bán trung bình/ngày (mock dữ liệu cho dự đoán) */
         public final int avgDaily;
+        /** Các size khả dụng (S, M, L) */
+        public final ObservableList<iu.canteen.model.MenuItemSize> sizes = FXCollections.observableArrayList();
 
         public Dish(int id, String name, int price, String category, int remaining, int avgDaily) {
             this.id = id;
@@ -59,6 +61,26 @@ public final class Store {
             this.remaining.set(remaining);
             this.avgDaily = avgDaily;
         }
+
+        public iu.canteen.model.MenuItemSize getSize(String label) {
+            if (label != null) {
+                for (iu.canteen.model.MenuItemSize s : sizes) {
+                    if (s.getSizeLabel().equalsIgnoreCase(label)) return s;
+                }
+            }
+            return sizes.isEmpty() ? null : sizes.get(0);
+        }
+
+        public int priceFor(String label) {
+            iu.canteen.model.MenuItemSize s = getSize(label);
+            return s != null ? s.getPrice() : price.get();
+        }
+
+        public double portionFor(String label) {
+            iu.canteen.model.MenuItemSize s = getSize(label);
+            return s != null ? s.getPortionMultiplier() : 1.0;
+        }
+
         public boolean orderable() { return available.get() && remaining.get() > 0; }
         @Override public String toString() { return name.get(); }
     }
@@ -85,6 +107,7 @@ public final class Store {
         public final Ingredient ingredient;
         public final DoubleProperty qty = new SimpleDoubleProperty();
         public RecipeLine(Ingredient ingredient, double qty) { this.ingredient = ingredient; this.qty.set(qty); }
+        public double adjustedQty(double portionMultiplier) { return qty.get() * portionMultiplier; }
     }
 
     /** inventory_batches */
@@ -110,18 +133,37 @@ public final class Store {
         }
     }
 
-    /** Một dòng trong giỏ hàng */
+    /** Một dòng trong giỏ hàng có chọn Size & Số lượng */
     public static class CartLine {
         public final Dish dish;
+        public final StringProperty size = new SimpleStringProperty("M");
+        public final IntegerProperty unitPrice = new SimpleIntegerProperty();
+        public final DoubleProperty portionMultiplier = new SimpleDoubleProperty(1.0);
         public final IntegerProperty qty = new SimpleIntegerProperty(1);
         public final StringProperty note = new SimpleStringProperty("");
-        public CartLine(Dish dish) { this.dish = dish; }
-        public int subtotal() { return dish.price.get() * qty.get(); }
+
+        public CartLine(Dish dish, iu.canteen.model.MenuItemSize sizeObj, int quantity) {
+            this.dish = dish;
+            this.size.set(sizeObj != null ? sizeObj.getSizeLabel() : "M");
+            this.unitPrice.set(sizeObj != null ? sizeObj.getPrice() : dish.price.get());
+            this.portionMultiplier.set(sizeObj != null ? sizeObj.getPortionMultiplier() : 1.0);
+            this.qty.set(Math.max(1, quantity));
+        }
+
+        public CartLine(Dish dish) {
+            this(dish, dish.getSize("M"), 1);
+        }
+
+        public int subtotal() { return unitPrice.get() * qty.get(); }
     }
 
     /** orders + order_items */
     public static class Order {
-        public record Line(String name, int qty, int unitPrice, String note) {}
+        public record Line(String name, String size, int qty, int unitPrice, double portionMultiplier, String note) {
+            public Line(String name, int qty, int unitPrice, String note) {
+                this(name, "M", qty, unitPrice, 1.0, note);
+            }
+        }
 
         public final int id;
         public final String customer;
@@ -140,7 +182,10 @@ public final class Store {
         }
         public String summary() {
             StringJoiner j = new StringJoiner(", ");
-            for (Line l : lines) j.add(l.name() + " x" + l.qty());
+            for (Line l : lines) {
+                String sizeTag = (l.size() != null && !l.size().isEmpty()) ? " (" + l.size() + ")" : "";
+                j.add(l.name() + sizeTag + " x" + l.qty());
+            }
             return j.toString();
         }
     }
@@ -156,7 +201,7 @@ public final class Store {
             d -> new Observable[]{d.name, d.price, d.category, d.available, d.remaining});
 
     public static final ObservableList<CartLine> cart = FXCollections.observableArrayList(
-            c -> new Observable[]{c.qty, c.note});
+            c -> new Observable[]{c.qty, c.note, c.size, c.unitPrice});
 
     public static final ObservableList<Order> orders = FXCollections.observableArrayList(
             o -> new Observable[]{o.status});
@@ -173,15 +218,66 @@ public final class Store {
     private static int nextDishId = 1;
 
     static {
-        // ---- Menu ----
-        menu.add(new Dish(nextDishId++, "Cơm gà xối mỡ", 35000, "Cơm", 40, 60));
-        menu.add(new Dish(nextDishId++, "Cơm sườn nướng", 38000, "Cơm", 35, 50));
-        menu.add(new Dish(nextDishId++, "Phở bò", 45000, "Món nước", 25, 40));
-        menu.add(new Dish(nextDishId++, "Bún bò Huế", 42000, "Món nước", 20, 30));
-        menu.add(new Dish(nextDishId++, "Bánh mì trứng", 20000, "Ăn nhẹ", 50, 45));
-        menu.add(new Dish(nextDishId++, "Trà đào cam sả", 25000, "Đồ uống", 60, 70));
-        menu.add(new Dish(nextDishId++, "Cà phê sữa", 22000, "Đồ uống", 80, 90));
+        // ---- Menu & Sizes (S, M, L) ----
+        Dish d1 = new Dish(nextDishId++, "Cơm gà xối mỡ", 35000, "Cơm", 40, 60);
+        d1.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(1, 1, "S", 30000, 0.8, 0),
+                new iu.canteen.model.MenuItemSize(2, 1, "M", 35000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(3, 1, "L", 42000, 1.3, 0)
+        );
+        menu.add(d1);
+
+        Dish d2 = new Dish(nextDishId++, "Cơm sườn nướng", 38000, "Cơm", 35, 50);
+        d2.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(4, 2, "S", 33000, 0.8, 0),
+                new iu.canteen.model.MenuItemSize(5, 2, "M", 38000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(6, 2, "L", 45000, 1.3, 0)
+        );
+        menu.add(d2);
+
+        Dish d3 = new Dish(nextDishId++, "Phở bò", 45000, "Món nước", 25, 40);
+        d3.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(7, 3, "S", 38000, 0.85, 0),
+                new iu.canteen.model.MenuItemSize(8, 3, "M", 45000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(9, 3, "L", 52000, 1.3, 0)
+        );
+        menu.add(d3);
+
+        Dish d4 = new Dish(nextDishId++, "Bún bò Huế", 42000, "Món nước", 20, 30);
+        d4.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(10, 4, "S", 35000, 0.85, 0),
+                new iu.canteen.model.MenuItemSize(11, 4, "M", 42000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(12, 4, "L", 50000, 1.3, 0)
+        );
+        menu.add(d4);
+
+        Dish d5 = new Dish(nextDishId++, "Bánh mì trứng", 20000, "Ăn nhẹ", 50, 45);
+        d5.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(13, 5, "S", 15000, 0.7, 0),
+                new iu.canteen.model.MenuItemSize(14, 5, "M", 20000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(15, 5, "L", 26000, 1.4, 0)
+        );
+        menu.add(d5);
+
+        Dish d6 = new Dish(nextDishId++, "Trà đào cam sả", 25000, "Đồ uống", 60, 70);
+        d6.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(16, 6, "M", 25000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(17, 6, "L", 30000, 1.3, 0)
+        );
+        menu.add(d6);
+
+        Dish d7 = new Dish(nextDishId++, "Cà phê sữa", 22000, "Đồ uống", 80, 90);
+        d7.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(18, 7, "M", 22000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(19, 7, "L", 27000, 1.3, 0)
+        );
+        menu.add(d7);
+
         Dish out = new Dish(nextDishId++, "Nước cam ép", 28000, "Đồ uống", 0, 25);
+        out.sizes.addAll(
+                new iu.canteen.model.MenuItemSize(20, 8, "M", 28000, 1.0, 0),
+                new iu.canteen.model.MenuItemSize(21, 8, "L", 35000, 1.3, 0)
+        );
         menu.add(out);
 
         // ---- Nguyên liệu ----
@@ -197,7 +293,7 @@ public final class Store {
         Ingredient tea   = new Ingredient(10, "Trà", "kg", 180, 1, 2);
         ingredients.addAll(rice, chick, pork, beef, noodle, egg, bread, coffee, milk, tea);
 
-        // ---- Công thức (định lượng/phần) ----
+        // ---- Công thức (định lượng/phần chuẩn size M) ----
         setRecipe(1, new RecipeLine(rice, 0.15), new RecipeLine(chick, 0.20));
         setRecipe(2, new RecipeLine(rice, 0.15), new RecipeLine(pork, 0.18));
         setRecipe(3, new RecipeLine(noodle, 0.20), new RecipeLine(beef, 0.10));
@@ -216,15 +312,17 @@ public final class Store {
         // ---- Đơn mẫu ----
         LocalDateTime now = LocalDateTime.now();
         seedOrder("student@iu.edu.vn", now.minusMinutes(50), "11:30", "", Status.COMPLETED,
-                new Order.Line("Cơm gà xối mỡ", 1, 35000, "Ít cơm"), new Order.Line("Trà đào cam sả", 1, 25000, ""));
+                new Order.Line("Cơm gà xối mỡ", "M", 1, 35000, 1.0, "Ít cơm"),
+                new Order.Line("Trà đào cam sả", "M", 1, 25000, 1.0, ""));
         seedOrder("an.nguyen@iu.edu.vn", now.minusMinutes(12), "11:45", "", Status.PENDING,
-                new Order.Line("Phở bò", 2, 45000, "Không hành"));
+                new Order.Line("Phở bò", "M", 2, 45000, 1.0, "Không hành"));
         seedOrder("binh.tran@iu.edu.vn", now.minusMinutes(9), "11:50", "Gọi giúp mình khi xong", Status.ACCEPTED,
-                new Order.Line("Cơm sườn nướng", 1, 38000, ""), new Order.Line("Cà phê sữa", 1, 22000, "Ít đá"));
+                new Order.Line("Cơm sườn nướng", "M", 1, 38000, 1.0, ""),
+                new Order.Line("Cà phê sữa", "M", 1, 22000, 1.0, "Ít đá"));
         seedOrder("student@iu.edu.vn", now.minusMinutes(6), "12:00", "", Status.PREPARING,
-                new Order.Line("Bánh mì trứng", 2, 20000, "Thêm tương ớt"));
+                new Order.Line("Bánh mì trứng", "M", 2, 20000, 1.0, "Thêm tương ớt"));
         seedOrder("chi.le@iu.edu.vn", now.minusMinutes(3), "12:10", "", Status.READY,
-                new Order.Line("Bún bò Huế", 1, 42000, ""));
+                new Order.Line("Bún bò Huế", "M", 1, 42000, 1.0, ""));
     }
 
     private static void setRecipe(int dishId, RecipeLine... lines) {
@@ -238,13 +336,14 @@ public final class Store {
         orders.add(0, new Order(nextOrderId++, customer, at, pickup, note, total, List.of(lines), st));
     }
 
-    // ===================== Actions (mock) =====================
+    // ===================== Actions =====================
     public static ObservableList<RecipeLine> recipeFor(Dish d) {
         return recipes.computeIfAbsent(d.id, k -> FXCollections.observableArrayList());
     }
 
     public static Dish addDish(String name, int price, String category, int remaining) {
         Dish d = new Dish(nextDishId++, name, price, category, remaining, 20);
+        d.sizes.add(new iu.canteen.model.MenuItemSize(0, d.id, "M", price, 1.0, 0));
         menu.add(d);
         return d;
     }
@@ -265,12 +364,40 @@ public final class Store {
         List<Order.Line> lines = new ArrayList<>();
         int total = 0;
         for (CartLine c : cart) {
-            lines.add(new Order.Line(c.dish.name.get(), c.qty.get(), c.dish.price.get(), c.note.get()));
+            lines.add(new Order.Line(c.dish.name.get(), c.size.get(), c.qty.get(), c.unitPrice.get(), c.portionMultiplier.get(), c.note.get()));
             total += c.subtotal();
             c.dish.remaining.set(c.dish.remaining.get() - c.qty.get());
         }
         Order o = new Order(nextOrderId++, currentUser, LocalDateTime.now(), pickup, note, total, lines, Status.PENDING);
         orders.add(0, o);
+
+        // Lưu đơn hàng vào SQLite
+        try {
+            iu.canteen.dao.OrderDao orderDao = new iu.canteen.dao.OrderDao();
+            iu.canteen.model.Order dbOrder = new iu.canteen.model.Order();
+            dbOrder.setCustomerEmail(currentUser);
+            dbOrder.setPickupTime(pickup);
+            dbOrder.setNote(note);
+            dbOrder.setTotalAmount(total);
+            dbOrder.setStatus(iu.canteen.model.Order.Status.PENDING);
+            dbOrder.setCreatedAt(LocalDateTime.now());
+
+            List<iu.canteen.model.OrderItem> dbItems = new ArrayList<>();
+            for (CartLine c : cart) {
+                iu.canteen.model.OrderItem it = new iu.canteen.model.OrderItem();
+                it.setMenuItemId(c.dish.id);
+                it.setMenuItemName(c.dish.name.get());
+                it.setSizeLabel(c.size.get());
+                it.setQuantity(c.qty.get());
+                it.setUnitPrice(c.unitPrice.get());
+                it.setPortionMultiplier(c.portionMultiplier.get());
+                it.setNote(c.note.get());
+                dbItems.add(it);
+            }
+            dbOrder.setItems(dbItems);
+            orderDao.createOrder(dbOrder);
+        } catch (Exception ignored) {}
+
         cart.clear();
         return o;
     }

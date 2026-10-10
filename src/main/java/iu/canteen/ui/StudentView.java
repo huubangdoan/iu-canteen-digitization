@@ -38,6 +38,7 @@ public class StudentView extends AbstractAuthenticatedView {
     private Timeline poll;
 
     private final StudentMenuView menuView = new StudentMenuView();
+    private final StudentFlashSaleView flashSaleView = new StudentFlashSaleView();
     private ListChangeListener<CartLine> cartListener;
 
     // Orders tab
@@ -53,23 +54,32 @@ public class StudentView extends AbstractAuthenticatedView {
     @Override
     protected void onLogout() {
         if (poll != null) poll.stop();
+        flashSaleView.stopTimer();
         Store.cart.clear();
     }
 
     @Override
     protected Parent buildContent() {
         Tab menuTab = new Tab("🍽  Thực đơn", menuView.build(this::addToCart));
+        Tab flashSaleTab = new Tab("🔥  Flash Sale", flashSaleView.build(() -> {
+            try {
+                new iu.canteen.service.OrderService().refreshMyOrders(Store.currentUser);
+            } catch (Exception ignored) {}
+            if (ordersTable != null) ordersTable.refresh();
+        }));
         cartTab = new Tab("🛒  Giỏ hàng", buildCart());
         ordersTab = new Tab("📋  Đơn của tôi", buildOrders());
-        tabs = new TabPane(menuTab, cartTab, ordersTab);
+        tabs = new TabPane(menuTab, flashSaleTab, cartTab, ordersTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
         cartListener = c -> cartTab.setText("🛒  Giỏ hàng (" + Store.cartCount() + ")");
         Store.cart.addListener(new WeakListChangeListener<>(cartListener));
 
-        // Polling "thời gian thực": làm mới trạng thái đơn mỗi 3 giây
+        // Polling "thời gian thực": làm mới trạng thái đơn mỗi 3 giây từ Database
         poll = new Timeline(new KeyFrame(Duration.seconds(3), e -> {
-            // TODO: gọi OrderService.refreshMyOrders() để lấy trạng thái mới từ DB
+            try {
+                new iu.canteen.service.OrderService().refreshMyOrders(Store.currentUser);
+            } catch (Exception ignored) {}
             ordersTable.refresh();
             updateStepper(ordersTable.getSelectionModel().getSelectedItem());
             lastUpdated.setText("Tự động cập nhật mỗi 3 giây • lần cuối " + LocalTime.now().format(HMS));
@@ -79,18 +89,23 @@ public class StudentView extends AbstractAuthenticatedView {
         return tabs;
     }
 
-    private void addToCart(Dish d) {
+    private void addToCart(Dish d, iu.canteen.model.MenuItemSize size, int qty) {
+        String sizeLabel = size != null ? size.getSizeLabel() : "M";
         for (CartLine l : Store.cart) {
-            if (l.dish == d) {
-                if (l.qty.get() < d.remaining.get()) {
-                    l.qty.set(l.qty.get() + 1);
+            if (l.dish == d && l.size.get().equalsIgnoreCase(sizeLabel)) {
+                if (l.qty.get() + qty <= d.remaining.get()) {
+                    l.qty.set(l.qty.get() + qty);
                 } else {
                     Ui.warn("Không đủ số lượng", "Món \"" + d.name.get() + "\" chỉ còn " + d.remaining.get() + " phần.");
                 }
                 return;
             }
         }
-        Store.cart.add(new CartLine(d));
+        if (qty <= d.remaining.get()) {
+            Store.cart.add(new CartLine(d, size, qty));
+        } else {
+            Ui.warn("Không đủ số lượng", "Món \"" + d.name.get() + "\" chỉ còn " + d.remaining.get() + " phần.");
+        }
     }
 
     // =========================================================
@@ -103,10 +118,32 @@ public class StudentView extends AbstractAuthenticatedView {
 
         TableColumn<CartLine, String> cName = new TableColumn<>("Món");
         cName.setCellValueFactory(c -> c.getValue().dish.name);
-        cName.setPrefWidth(200);
+        cName.setPrefWidth(180);
+
+        TableColumn<CartLine, CartLine> cSize = new TableColumn<>("Size");
+        cSize.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(c.getValue()));
+        cSize.setPrefWidth(85);
+        cSize.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(CartLine l, boolean empty) {
+                super.updateItem(l, empty);
+                if (empty || l == null) {
+                    setGraphic(null);
+                } else {
+                    String s = l.size.get();
+                    Label badge = Ui.label("Size " + s, "size-badge");
+                    switch (s.toUpperCase()) {
+                        case "S" -> badge.getStyleClass().add("size-s");
+                        case "L" -> badge.getStyleClass().add("size-l");
+                        default -> badge.getStyleClass().add("size-m");
+                    }
+                    setGraphic(badge);
+                }
+            }
+        });
 
         TableColumn<CartLine, String> cPrice = new TableColumn<>("Đơn giá");
-        cPrice.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(Ui.money(c.getValue().dish.price.get())));
+        cPrice.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(Ui.money(c.getValue().unitPrice.get())));
         cPrice.setPrefWidth(90);
 
         TableColumn<CartLine, CartLine> cQty = new TableColumn<>("Số lượng");
@@ -149,7 +186,7 @@ public class StudentView extends AbstractAuthenticatedView {
         cNote.setCellValueFactory(c -> c.getValue().note);
         cNote.setCellFactory(TextFieldTableCell.forTableColumn());
         cNote.setOnEditCommit(e -> e.getRowValue().note.set(e.getNewValue()));
-        cNote.setPrefWidth(250);
+        cNote.setPrefWidth(240);
 
         TableColumn<CartLine, String> cSub = new TableColumn<>("Thành tiền");
         cSub.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(Ui.money(c.getValue().subtotal())));
@@ -168,7 +205,7 @@ public class StudentView extends AbstractAuthenticatedView {
             }
         });
 
-        table.getColumns().addAll(List.of(cName, cPrice, cQty, cNote, cSub, cDel));
+        table.getColumns().addAll(List.of(cName, cSize, cPrice, cQty, cNote, cSub, cDel));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         // ---- Panel thanh toán / xác nhận ----
@@ -200,13 +237,20 @@ public class StudentView extends AbstractAuthenticatedView {
                 Ui.warn("Giỏ hàng trống", "Hãy chọn ít nhất một món.");
                 return;
             }
-            // Kiểm tra số lượng còn lại trước khi xác nhận
-            List<String> problems = new ArrayList<>();
+            // Kiểm tra tổng số lượng còn lại theo từng món
+            java.util.Map<Dish, Integer> totalByDish = new java.util.HashMap<>();
             for (CartLine l : Store.cart) {
-                if (!l.dish.available.get() || l.dish.remaining.get() <= 0) {
-                    problems.add("• " + l.dish.name.get() + ": đã hết món");
-                } else if (l.qty.get() > l.dish.remaining.get()) {
-                    problems.add("• " + l.dish.name.get() + ": chỉ còn " + l.dish.remaining.get() + " phần (bạn chọn " + l.qty.get() + ")");
+                totalByDish.merge(l.dish, l.qty.get(), Integer::sum);
+            }
+
+            List<String> problems = new ArrayList<>();
+            for (java.util.Map.Entry<Dish, Integer> entry : totalByDish.entrySet()) {
+                Dish d = entry.getKey();
+                int requested = entry.getValue();
+                if (!d.available.get() || d.remaining.get() <= 0) {
+                    problems.add("• " + d.name.get() + ": đã hết món");
+                } else if (requested > d.remaining.get()) {
+                    problems.add("• " + d.name.get() + ": chỉ còn " + d.remaining.get() + " phần (bạn chọn tổng " + requested + ")");
                 }
             }
             if (!problems.isEmpty()) {
@@ -216,12 +260,16 @@ public class StudentView extends AbstractAuthenticatedView {
             String slot = pickup.getValue();
             if (Ui.confirm("Xác nhận đặt món?", Store.cartCount() + " phần • " + Ui.money(Store.cartTotal())
                     + "\nGiờ lấy: " + slot)) {
-                // TODO: OrderService.create(...) – lưu orders + order_items, trừ tồn
-                Order o = Store.placeOrder(slot, note.getText());
-                note.clear();
-                Ui.info("Đặt món thành công 🎉", "Mã đơn #" + o.id + ". Bạn có thể theo dõi trạng thái ở tab \"Đơn của tôi\".");
-                tabs.getSelectionModel().select(ordersTab);
-                ordersTable.getSelectionModel().select(o);
+                try {
+                    iu.canteen.service.OrderService orderService = new iu.canteen.service.OrderService();
+                    Order o = orderService.createOrder(Store.currentUser, slot, note.getText(), new ArrayList<>(Store.cart));
+                    note.clear();
+                    Ui.info("Đặt món thành công 🎉", "Mã đơn #" + o.id + ". Bạn có thể theo dõi trạng thái ở tab \"Đơn của tôi\".");
+                    tabs.getSelectionModel().select(ordersTab);
+                    ordersTable.getSelectionModel().select(o);
+                } catch (Exception ex) {
+                    Ui.warn("Không thể đặt món", ex.getMessage());
+                }
             }
         });
 
@@ -330,10 +378,14 @@ public class StudentView extends AbstractAuthenticatedView {
                 cancel.setOnAction(e -> {
                     Order o = getItem();
                     if (o != null && Ui.confirm("Hủy đơn #" + o.id + "?", "Chỉ hủy được khi quán chưa nhận đơn.")) {
-                        // TODO: OrderService.cancel(o.id)
-                        Store.cancelOrder(o);
-                        ordersTable.refresh();
-                        updateStepper(o);
+                        try {
+                            new iu.canteen.service.OrderService().cancelOrder(o.id);
+                            ordersTable.refresh();
+                            updateStepper(o);
+                            Ui.info("Đã hủy đơn", "Đơn hàng #" + o.id + " đã được hủy thành công.");
+                        } catch (Exception ex) {
+                            Ui.warn("Không thể hủy đơn", ex.getMessage());
+                        }
                     }
                 });
             }

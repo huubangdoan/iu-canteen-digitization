@@ -67,18 +67,27 @@ public class LoginView implements Screen {
                 err.setText("Vui lòng nhập email và mật khẩu.");
                 return;
             }
-            if (!em.endsWith("iu.edu.vn")) {
-                err.setText("Chỉ IUers (email @iu.edu.vn) mới đăng nhập được.");
-                return;
+            try {
+                iu.canteen.service.AuthService authService = new iu.canteen.service.AuthService();
+                iu.canteen.model.User user = authService.login(em, pw.getText());
+                Store.currentUser = user.getEmail();
+                if (user.isAdmin()) {
+                    Store.currentRole = Store.Role.ADMIN;
+                } else if (user.isVendor()) {
+                    Store.Role.VENDOR.name();
+                    Store.currentRole = Store.Role.VENDOR;
+                } else {
+                    Store.currentRole = Store.Role.STUDENT;
+                }
+                App.showMain();
+            } catch (IllegalArgumentException ex) {
+                err.setText(ex.getMessage());
+            } catch (Exception ex) {
+                err.setText("Đăng nhập thất bại: " + ex.getMessage());
             }
-            // TODO: gọi AuthService.login(email, password) và đọc role từ bảng users
-            Store.currentUser = em;
-            Store.currentRole = em.startsWith("vendor") ? Store.Role.VENDOR
-                    : em.startsWith("admin") ? Store.Role.ADMIN : Store.Role.STUDENT;
-            App.showMain();
         });
 
-        Label hint = Ui.label("Demo: student@iu.edu.vn • vendor@iu.edu.vn • admin@iu.edu.vn (mật khẩu bất kỳ)", "muted");
+        Label hint = Ui.label("Tài khoản mặc định: admin@iu.edu.vn (mk: admin123) • vendor@iu.edu.vn (mk: vendor123) • student@iu.edu.vn (mk: student123)", "muted");
         hint.setWrapText(true);
 
         VBox form = new VBox(8,
@@ -113,16 +122,31 @@ public class LoginView implements Screen {
             msg.getStyleClass().setAll("label", "error-text");
             if (name.getText().isBlank() || email.getText().isBlank() || id.getText().isBlank()) {
                 msg.setText("Vui lòng điền đầy đủ thông tin.");
-            } else if (!email.getText().trim().toLowerCase().endsWith("iu.edu.vn")) {
+                return;
+            }
+            if (!email.getText().trim().toLowerCase().endsWith("iu.edu.vn")) {
                 msg.setText("Chỉ chấp nhận email @iu.edu.vn.");
-            } else if (pw.getText().length() < 6) {
+                return;
+            }
+            if (pw.getText().length() < 6) {
                 msg.setText("Mật khẩu phải có ít nhất 6 ký tự.");
-            } else if (!pw.getText().equals(pw2.getText())) {
+                return;
+            }
+            if (!pw.getText().equals(pw2.getText())) {
                 msg.setText("Mật khẩu nhập lại không khớp.");
-            } else {
-                // TODO: AuthService.register(...) – hash mật khẩu rồi lưu vào bảng users
-                Ui.info("Đăng ký thành công", "Bạn có thể đăng nhập bằng email vừa tạo.");
+                return;
+            }
+
+            try {
+                iu.canteen.service.AuthService authService = new iu.canteen.service.AuthService();
+                String role = "STUDENT";
+                authService.register(name.getText(), email.getText(), id.getText(), pw.getText(), role);
+                Ui.info("Đăng ký thành công", "Tài khoản " + email.getText().trim() + " đã được tạo! Bạn có thể đăng nhập ngay.");
                 tabs.getSelectionModel().select(0);
+            } catch (IllegalArgumentException ex) {
+                msg.setText(ex.getMessage());
+            } catch (Exception ex) {
+                msg.setText("Đăng ký thất bại: " + ex.getMessage());
             }
         });
 

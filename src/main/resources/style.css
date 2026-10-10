@@ -132,6 +132,17 @@
 .badge-buy       { -fx-background-color: #fef3c7; -fx-text-fill: #92400e; }
 .badge-enough    { -fx-background-color: #dcfce7; -fx-text-fill: #166534; }
 
+/* ===================== Size & Portions ===================== */
+.size-badge {
+    -fx-background-radius: 6; -fx-padding: 2 8 2 8; -fx-font-weight: bold; -fx-font-size: 11px;
+}
+.size-s { -fx-background-color: #ecfdf5; -fx-text-fill: #065f46; -fx-border-color: #a7f3d0; -fx-border-radius: 6; }
+.size-m { -fx-background-color: #eff6ff; -fx-text-fill: #1e40af; -fx-border-color: #bfdbfe; -fx-border-radius: 6; }
+.size-l { -fx-background-color: #fff7ed; -fx-text-fill: #c2410c; -fx-border-color: #fed7aa; -fx-border-radius: 6; }
+.portion-hint { -fx-font-size: 11px; -fx-text-fill: #059669; }
+.qty-stepper { -fx-alignment: center; }
+.qty-label { -fx-font-weight: bold; -fx-min-width: 24; -fx-alignment: center; }
+
 /* ===================== Stepper ===================== */
 .step { -fx-text-fill: #9ca3af; -fx-font-weight: bold; }
 .step-done { -fx-text-fill: #16a34a; }
@@ -157,3 +168,108 @@
 .transparent-scroll { -fx-padding: 0; }
 
 .titled-pane > .title { -fx-background-color: #eef2ff; }
+
+/* ===================== Phase 5: Flash Sale & Waste Reduction ===================== */
+.flash-banner {
+    -fx-background-color: linear-gradient(to right, #c2410c, #ea580c, #f97316);
+    -fx-background-radius: 12;
+    -fx-padding: 16 20 16 20;
+    -fx-effect: dropshadow(gaussian, rgba(234, 88, 12, 0.25), 14, 0, 0, 4);
+}
+.flash-banner-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+.flash-banner-sub {
+    -fx-font-size: 13px;
+    -fx-text-fill: #ffedd5;
+}
+.flash-timer-box {
+    -fx-background-color: rgba(0, 0, 0, 0.35);
+    -fx-background-radius: 10;
+    -fx-padding: 6 14 6 14;
+    -fx-alignment: center;
+}
+.flash-timer-label {
+    -fx-font-size: 11px;
+    -fx-text-fill: #fed7aa;
+    -fx-font-weight: bold;
+}
+.flash-timer-val {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #fef08a;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+}
+.flash-card {
+    -fx-background-color: white;
+    -fx-background-radius: 14;
+    -fx-padding: 16;
+    -fx-pref-width: 250;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.08), 10, 0, 0, 3);
+    -fx-border-color: #ffedd5;
+    -fx-border-radius: 14;
+    -fx-border-width: 1.5;
+}
+.flash-card:hover {
+    -fx-border-color: #f97316;
+    -fx-effect: dropshadow(gaussian, rgba(249, 115, 22, 0.20), 14, 0, 0, 4);
+}
+.discount-chip {
+    -fx-background-color: #ef4444;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+    -fx-background-radius: 14;
+    -fx-padding: 3 10 3 10;
+}
+.price-strike {
+    -fx-text-fill: #9ca3af;
+    -fx-font-size: 13px;
+    -fx-strikethrough: true;
+}
+.flash-price {
+    -fx-text-fill: #ea580c;
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+}
+.stock-warning-chip {
+    -fx-background-color: #fef3c7;
+    -fx-text-fill: #b45309;
+    -fx-background-radius: 12;
+    -fx-padding: 2 8 2 8;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+.btn-flash {
+    -fx-background-color: linear-gradient(to right, #ea580c, #f97316);
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-padding: 7 14 7 14;
+}
+.btn-flash:hover {
+    -fx-background-color: linear-gradient(to right, #c2410c, #ea580c);
+}
+.waste-kpi-card {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 16;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.06), 8, 0, 0, 2);
+    -fx-border-color: #e5e7eb;
+    -fx-border-radius: 12;
+}
+.alert-waste-box {
+    -fx-background-color: #fffbeb;
+    -fx-background-radius: 10;
+    -fx-padding: 12 16 12 16;
+    -fx-border-color: #fde68a;
+    -fx-border-radius: 10;
+}
+.alert-waste-text {
+    -fx-text-fill: #92400e;
+    -fx-font-weight: bold;
+    -fx-font-size: 13px;
+}
+

@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: iu.canteen.Phase2SizeOrderingTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.642 s -- in iu.canteen.Phase2SizeOrderingTest
