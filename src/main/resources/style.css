@@ -1,0 +1,159 @@
+/* ===================== Base ===================== */
+.root {
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: #f4f6fb;
+    -fx-text-fill: #1f2937;
+}
+.label { -fx-text-fill: #1f2937; }
+.muted { -fx-text-fill: #6b7280; }
+.error-text { -fx-text-fill: #dc2626; }
+.ok-text { -fx-text-fill: #16a34a; }
+.h1 { -fx-font-size: 22px; -fx-font-weight: bold; }
+.h2 { -fx-font-size: 16px; -fx-font-weight: bold; }
+.field-label { -fx-font-weight: bold; -fx-text-fill: #374151; }
+
+.text-field, .password-field, .combo-box-base, .date-picker, .text-area {
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: #d1d5db;
+    -fx-background-color: white;
+    -fx-padding: 6 10 6 10;
+}
+.text-area { -fx-padding: 0; }
+.text-area .content { -fx-background-radius: 8; }
+.combo-box-base { -fx-padding: 2 4 2 4; }
+.text-field:focused, .password-field:focused, .text-area:focused {
+    -fx-border-color: #1d4ed8;
+}
+
+/* ===================== Buttons ===================== */
+.button { -fx-background-radius: 8; -fx-cursor: hand; -fx-padding: 7 16 7 16; }
+.btn-primary {
+    -fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-weight: bold;
+}
+.btn-primary:hover { -fx-background-color: #1e40af; }
+.btn-primary:disabled { -fx-background-color: #9ca3af; -fx-opacity: 1; }
+.btn-accent {
+    -fx-background-color: #f59e0b; -fx-text-fill: white; -fx-font-weight: bold;
+}
+.btn-accent:hover { -fx-background-color: #d97706; }
+.btn-danger {
+    -fx-background-color: white; -fx-text-fill: #dc2626;
+    -fx-border-color: #fca5a5; -fx-border-radius: 8;
+}
+.btn-danger:hover { -fx-background-color: #fef2f2; }
+.btn-ghost {
+    -fx-background-color: rgba(255,255,255,0.15); -fx-text-fill: white;
+}
+.btn-ghost:hover { -fx-background-color: rgba(255,255,255,0.28); }
+.btn-small {
+    -fx-background-color: #e5e7eb; -fx-text-fill: #111827; -fx-padding: 2 9 2 9;
+    -fx-font-weight: bold;
+}
+.btn-small:hover { -fx-background-color: #d1d5db; }
+
+/* ===================== Top bar ===================== */
+.topbar { -fx-background-color: linear-gradient(to right, #1e3a8a, #1d4ed8); }
+.topbar-title { -fx-text-fill: white; -fx-font-size: 18px; -fx-font-weight: bold; }
+.topbar-user { -fx-text-fill: white; }
+.topbar-role {
+    -fx-background-color: #f59e0b; -fx-text-fill: white; -fx-background-radius: 20;
+    -fx-padding: 2 10 2 10; -fx-font-weight: bold; -fx-font-size: 11px;
+}
+
+/* ===================== Login ===================== */
+.brand-panel { -fx-background-color: linear-gradient(to bottom right, #1e3a8a, #2563eb); }
+.brand-title { -fx-text-fill: white; -fx-font-size: 34px; -fx-font-weight: bold; }
+.brand-sub { -fx-text-fill: #dbeafe; -fx-font-size: 15px; }
+.brand-chip {
+    -fx-background-color: #f59e0b; -fx-text-fill: white; -fx-background-radius: 20;
+    -fx-padding: 4 14 4 14; -fx-font-weight: bold;
+}
+.login-bg { -fx-background-color: #f4f6fb; }
+
+/* ===================== Cards ===================== */
+.card {
+    -fx-background-color: white;
+    -fx-background-radius: 14;
+    -fx-padding: 16;
+    -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.10), 12, 0, 0, 3);
+}
+.menu-card { -fx-pref-width: 220; }
+.menu-thumb { -fx-background-color: #eef2ff; -fx-background-radius: 10; -fx-pref-height: 90; }
+.menu-emoji { -fx-font-size: 44px; }
+.dish-name { -fx-font-size: 15px; -fx-font-weight: bold; }
+.price { -fx-text-fill: #1d4ed8; -fx-font-size: 16px; -fx-font-weight: bold; }
+.tag {
+    -fx-background-color: #e0e7ff; -fx-text-fill: #3730a3; -fx-background-radius: 20;
+    -fx-padding: 1 8 1 8; -fx-font-size: 11px;
+}
+.soldout { -fx-text-fill: #dc2626; -fx-font-weight: bold; }
+.stock-ok { -fx-text-fill: #16a34a; }
+
+.kpi-value { -fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #1d4ed8; }
+.kpi-title { -fx-text-fill: #6b7280; }
+
+/* ===================== Tabs ===================== */
+.tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-radius: 8 8 0 0; -fx-padding: 6 14 6 14;
+}
+.tab-pane > .tab-header-area > .headers-region > .tab:selected { -fx-background-color: white; }
+.tab-pane > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: #1d4ed8; -fx-font-weight: bold;
+}
+.tab-pane > .tab-header-area > .tab-header-background { -fx-background-color: transparent; }
+.tab-pane > .tab-content-area { -fx-background-color: #f4f6fb; }
+
+/* ===================== Tables ===================== */
+.table-view {
+    -fx-background-radius: 10; -fx-border-radius: 10; -fx-border-color: #e5e7eb;
+}
+.table-view .column-header-background { -fx-background-color: #eef2ff; }
+.table-view .column-header .label { -fx-font-weight: bold; -fx-text-fill: #3730a3; }
+.table-row-cell:odd { -fx-background-color: #fafafa; }
+.table-row-cell:selected { -fx-background-color: #dbeafe; }
+.table-row-cell:selected .text { -fx-fill: #111827; }
+.row-warn { -fx-background-color: #fef2f2 !important; }
+.row-soon { -fx-background-color: #fffbeb !important; }
+.table-cell { -fx-alignment: CENTER-LEFT; }
+
+/* ===================== Badges ===================== */
+.badge {
+    -fx-background-radius: 20; -fx-padding: 2 10 2 10; -fx-font-size: 11px; -fx-font-weight: bold;
+}
+.badge-pending   { -fx-background-color: #fef3c7; -fx-text-fill: #92400e; }
+.badge-accepted  { -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; }
+.badge-preparing { -fx-background-color: #ede9fe; -fx-text-fill: #5b21b6; }
+.badge-ready     { -fx-background-color: #dcfce7; -fx-text-fill: #166534; }
+.badge-completed { -fx-background-color: #e5e7eb; -fx-text-fill: #374151; }
+.badge-cancelled { -fx-background-color: #fee2e2; -fx-text-fill: #991b1b; }
+.badge-urgent    { -fx-background-color: #fee2e2; -fx-text-fill: #991b1b; }
+.badge-buy       { -fx-background-color: #fef3c7; -fx-text-fill: #92400e; }
+.badge-enough    { -fx-background-color: #dcfce7; -fx-text-fill: #166534; }
+
+/* ===================== Stepper ===================== */
+.step { -fx-text-fill: #9ca3af; -fx-font-weight: bold; }
+.step-done { -fx-text-fill: #16a34a; }
+.step-current { -fx-text-fill: #1d4ed8; -fx-font-size: 14px; }
+.line { -fx-background-color: #d1d5db; }
+.line-done { -fx-background-color: #16a34a; }
+
+/* ===================== Kitchen board ===================== */
+.board-col { -fx-background-color: #e8ecf5; -fx-background-radius: 14; -fx-padding: 10; }
+.col-title { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #1e3a8a; }
+.order-card {
+    -fx-background-color: white; -fx-background-radius: 10; -fx-padding: 12;
+    -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.10), 8, 0, 0, 2);
+}
+.order-id { -fx-font-size: 16px; -fx-font-weight: bold; }
+.line-item { -fx-font-weight: bold; }
+.note-text { -fx-text-fill: #b45309; -fx-font-style: italic; }
+.pickup-chip {
+    -fx-background-color: #fff7ed; -fx-text-fill: #c2410c; -fx-background-radius: 20;
+    -fx-padding: 2 10 2 10; -fx-font-weight: bold;
+}
+.transparent-scroll, .transparent-scroll > .viewport { -fx-background-color: transparent; }
+.transparent-scroll { -fx-padding: 0; }
+
+.titled-pane > .title { -fx-background-color: #eef2ff; }
